@@ -740,20 +740,26 @@ func _projection_readback_checkpoint_name(value: int) -> String:
 			return "unknown(%d)" % value
 
 func _rid_string(rid: RID) -> String:
-	return str(rid) if rid.is_valid() else "RID()"
+	return "RID(%d)" % rid.get_id() if rid.is_valid() else "RID()"
 
 func _descriptor_rid_string(state, key: String) -> String:
 	if not state.descriptors.has(key):
 		return "RID()"
 	return _rid_string(state.descriptors[key].rid)
 
+func _descriptor_set_rid_string(state, key: String) -> String:
+	if not state.descriptor_sets.has(key):
+		return "RID()"
+	return _rid_string(state.descriptor_sets[key])
+
+func _pipeline_snapshot_string(state, key: String) -> String:
+	if not state.pipelines.has(key):
+		return "missing"
+	var pipeline_callable: Callable = state.pipelines[key]
+	return "Callable(valid=%s)" % str(pipeline_callable.is_valid())
+
 func _projection_resource_snapshot(state) -> Dictionary:
-	var snapshot := {
-		"gpu_generation": int(state.gpu_generation),
-		"projection_set": _rid_string(state.descriptor_sets.get("projection", RID())),
-		"scratch_probe_set": _rid_string(state.descriptor_sets.get("scratch_probe", RID())),
-		"projection_pipeline": _rid_string(state.pipelines.get("gsplat_projection", RID())),
-		"scratch_pipeline": _rid_string(state.pipelines.get("gsplat_scratch_probe", RID())),
+	var tracked_resources := {
 		"projection_probe": _descriptor_rid_string(state, "projection_probe"),
 		"scratch_probe": _descriptor_rid_string(state, "scratch_probe"),
 		"histogram": _descriptor_rid_string(state, "histogram"),
@@ -764,26 +770,35 @@ func _projection_resource_snapshot(state) -> Dictionary:
 		"render_texture": _descriptor_rid_string(state, "render_texture"),
 		"depth_texture": _descriptor_rid_string(state, "depth_texture")
 	}
-	var alias_values := [
-		snapshot["projection_probe"],
-		snapshot["scratch_probe"],
-		snapshot["histogram"],
-		snapshot["sort_keys"],
-		snapshot["sort_values"],
-		snapshot["culled_splats"],
-		snapshot["tile_bounds"],
-		snapshot["render_texture"],
-		snapshot["depth_texture"]
-	]
-	var seen := {}
-	var aliases: Array[String] = []
-	for value in alias_values:
-		if value == "RID()":
+	var alias_groups := {}
+	for resource_name in tracked_resources.keys():
+		var resource_rid: String = tracked_resources[resource_name]
+		if resource_rid == "RID()":
 			continue
-		if seen.has(value):
-			aliases.append(value)
-		else:
-			seen[value] = true
-	snapshot["aliasing_detected"] = str(not aliases.is_empty())
-	snapshot["alias_rids"] = "[" + ", ".join(aliases) + "]"
+		if not alias_groups.has(resource_rid):
+			alias_groups[resource_rid] = []
+		alias_groups[resource_rid].append(resource_name)
+	var duplicate_alias_groups := {}
+	for resource_rid in alias_groups.keys():
+		var alias_members: Array = alias_groups[resource_rid]
+		if alias_members.size() > 1:
+			duplicate_alias_groups[resource_rid] = alias_members
+	var snapshot := {
+		"gpu_generation": int(state.gpu_generation),
+		"projection_set": _descriptor_set_rid_string(state, "projection"),
+		"scratch_probe_set": _descriptor_set_rid_string(state, "scratch_probe"),
+		"projection_pipeline": _pipeline_snapshot_string(state, "gsplat_projection"),
+		"scratch_pipeline": _pipeline_snapshot_string(state, "gsplat_scratch_probe"),
+		"projection_probe": tracked_resources["projection_probe"],
+		"scratch_probe": tracked_resources["scratch_probe"],
+		"histogram": tracked_resources["histogram"],
+		"sort_keys": tracked_resources["sort_keys"],
+		"sort_values": tracked_resources["sort_values"],
+		"culled_splats": tracked_resources["culled_splats"],
+		"tile_bounds": tracked_resources["tile_bounds"],
+		"render_texture": tracked_resources["render_texture"],
+		"depth_texture": tracked_resources["depth_texture"],
+		"aliasing_detected": not duplicate_alias_groups.is_empty(),
+		"alias_groups": duplicate_alias_groups
+	}
 	return snapshot
