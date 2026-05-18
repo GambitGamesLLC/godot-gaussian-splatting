@@ -193,6 +193,9 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			debug_projection_readback_checkpoint
 		)
 		print("[gdgs] compositor stage=render_for_compositor_returned view=%d empty=%s" % [view, str(gsplat_result.is_empty())])
+		var debug_sync_snapshot: Dictionary = gsplat_result.get("debug_sync_snapshot", {})
+		if not debug_sync_snapshot.is_empty():
+			print("[gdgs] compositor stage=render_for_compositor_sync_snapshot view=%d snapshot=%s" % [view, JSON.stringify(debug_sync_snapshot)])
 		if gsplat_result.is_empty():
 			_log_once("render_result_empty", "[gdgs] render_for_compositor() returned an empty result")
 			continue

@@ -165,7 +165,8 @@ func render_for_compositor(
 		)
 		return {
 			"color_alpha_texture": color_texture,
-			"depth_texture": depth_texture
+			"depth_texture": depth_texture,
+			"debug_sync_snapshot": _post_projection_sync_snapshot(state)
 		}
 	return {}
 
@@ -367,6 +368,15 @@ func _projection_diagnostic_details(state, point_count: int) -> Dictionary:
 		"cleanup_request_serial": int(state.last_cleanup_request_serial),
 		"cleanup_request_reason": state.last_cleanup_reason,
 		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state))
+	}
+
+func _post_projection_sync_snapshot(state) -> Dictionary:
+	return {
+		"gpu_generation": int(state.gpu_generation),
+		"projection_dispatch_serial": int(state.last_projection_dispatch_serial),
+		"cleanup_request_serial": int(state.last_cleanup_request_serial),
+		"cleanup_request_reason": state.last_cleanup_reason,
+		"projection_resource_snapshot": _projection_resource_snapshot(state)
 	}
 
 func _projection_probe_seed_bytes(state, point_count: int) -> PackedByteArray:
