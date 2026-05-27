@@ -116,6 +116,12 @@ enum ProjectionReadbackCheckpoint {
 	SCRATCH_PROJECTION_MIRROR_ONLY
 }
 
+enum ProjectionBackendConsumeTraceMode {
+	DISABLED,
+	MARKERS_ONLY,
+	EMPTY_COMPUTE_BOUNDARY
+}
+
 var _once_logs := {}
 
 func render_for_compositor(
@@ -127,7 +133,8 @@ func render_for_compositor(
 	camera_world_position: Vector3,
 	depth_capture_alpha: float = 0.5,
 	debug_raster_stage: int = RasterDebugStage.FULL_PIPELINE,
-	debug_projection_readback_checkpoint: int = ProjectionReadbackCheckpoint.FULL_PACKAGE
+	debug_projection_readback_checkpoint: int = ProjectionReadbackCheckpoint.FULL_PACKAGE,
+	debug_backend_consume_trace_mode: int = ProjectionBackendConsumeTraceMode.DISABLED
 ) -> Dictionary:
 	state_cache.flush_pending_cleanup()
 
@@ -178,8 +185,13 @@ func render_for_compositor(
 		"projection_readback_checkpoint_gate",
 		"[gdgs] renderer projection readback checkpoint=%s" % _projection_readback_checkpoint_name(debug_projection_readback_checkpoint)
 	)
+	if debug_backend_consume_trace_mode != ProjectionBackendConsumeTraceMode.DISABLED:
+		_log_once(
+			"projection_backend_consume_trace_gate",
+			"[gdgs] renderer projection backend consume trace=%s" % _projection_backend_consume_trace_mode_name(debug_backend_consume_trace_mode)
+		)
 
-	_rasterize_state(state, point_count, debug_raster_stage, debug_projection_readback_checkpoint)
+	_rasterize_state(state, point_count, debug_raster_stage, debug_projection_readback_checkpoint, debug_backend_consume_trace_mode)
 	if state.descriptors.has("render_texture") and state.descriptors.has("depth_texture"):
 		var color_texture: RID = state.descriptors["render_texture"].rid
 		var depth_texture: RID = state.descriptors["depth_texture"].rid
@@ -199,7 +211,13 @@ func render_for_compositor(
 		}
 	return {}
 
-func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_projection_readback_checkpoint: int) -> void:
+func _rasterize_state(
+	state,
+	point_count: int,
+	debug_raster_stage: int,
+	debug_projection_readback_checkpoint: int,
+	debug_backend_consume_trace_mode: int
+) -> void:
 	if state.context == null:
 		return
 
@@ -257,11 +275,17 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 
 	state.last_projection_dispatch_serial += 1
 	var projection_dispatch_serial := int(state.last_projection_dispatch_serial)
+	var backend_trace_mode := debug_backend_consume_trace_mode
 	var compute_list: int = state.context.compute_list_begin()
 	var projection_details := _projection_diagnostic_details(state, point_count, debug_raster_stage)
 	projection_details["projection_dispatch_serial"] = projection_dispatch_serial
+	projection_details["backend_consume_trace_mode"] = _projection_backend_consume_trace_mode_name(backend_trace_mode)
+	if backend_trace_mode != ProjectionBackendConsumeTraceMode.DISABLED:
+		_projection_backend_consume_trace_begin(state, point_count, debug_raster_stage, projection_dispatch_serial, backend_trace_mode)
 	_log_stage("projection_begin", state, point_count, projection_details)
 	state.pipelines["gsplat_projection"].call(state.context, compute_list, state.camera_push_constants)
+	if backend_trace_mode != ProjectionBackendConsumeTraceMode.DISABLED:
+		_projection_backend_consume_trace_mark(state, point_count, debug_raster_stage, projection_dispatch_serial, backend_trace_mode, "same_dispatch_post_barrier")
 	_log_stage("projection_end", state, point_count, {
 		"projection_dispatch_serial": projection_dispatch_serial,
 		"push_constant_bytes": state.camera_push_constants.size(),
@@ -270,9 +294,15 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 		"gpu_generation": int(state.gpu_generation),
 		"cleanup_request_serial": int(state.last_cleanup_request_serial),
 		"cleanup_request_reason": state.last_cleanup_reason,
-		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state))
+		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state)),
+		"backend_consume_trace_mode": _projection_backend_consume_trace_mode_name(backend_trace_mode)
 	})
 	state.context.compute_list_end()
+	if backend_trace_mode != ProjectionBackendConsumeTraceMode.DISABLED:
+		_projection_backend_consume_trace_mark(state, point_count, debug_raster_stage, projection_dispatch_serial, backend_trace_mode, "immediate_downstream_handoff")
+		_projection_backend_consume_trace_end(state)
+		if backend_trace_mode == ProjectionBackendConsumeTraceMode.EMPTY_COMPUTE_BOUNDARY:
+			_projection_backend_consume_trace_empty_compute_boundary(state, point_count, debug_raster_stage, projection_dispatch_serial)
 	_run_projection_post_dispatch_checkpoint(state, point_count, debug_projection_readback_checkpoint)
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_ONLY:
@@ -400,6 +430,64 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 		return
 
 	_log_stage("rasterize_state_return", state, point_count)
+
+func _projection_backend_consume_trace_begin(state, point_count: int, debug_raster_stage: int, projection_dispatch_serial: int, backend_trace_mode: int) -> void:
+	state.context.draw_command_begin_label(_projection_backend_consume_trace_scope_label(debug_raster_stage, projection_dispatch_serial))
+	_projection_backend_consume_trace_mark(state, point_count, debug_raster_stage, projection_dispatch_serial, backend_trace_mode, "projection_dispatch_begin")
+
+func _projection_backend_consume_trace_end(state) -> void:
+	state.context.draw_command_end_label()
+
+func _projection_backend_consume_trace_mark(state, point_count: int, debug_raster_stage: int, projection_dispatch_serial: int, backend_trace_mode: int, boundary_name: String) -> void:
+	var label := _projection_backend_consume_trace_marker_label(debug_raster_stage, projection_dispatch_serial, boundary_name)
+	state.context.draw_command_insert_label(label)
+	state.context.capture_timestamp(label)
+	_log_stage("projection_backend_consume_trace", state, point_count, {
+		"projection_dispatch_serial": projection_dispatch_serial,
+		"projection_shader_mode": _projection_shader_mode_name(_projection_shader_mode_for_stage(debug_raster_stage)),
+		"backend_consume_trace_mode": _projection_backend_consume_trace_mode_name(backend_trace_mode),
+		"backend_consume_boundary": boundary_name,
+		"backend_consume_label": label
+	})
+
+func _projection_backend_consume_trace_empty_compute_boundary(state, point_count: int, debug_raster_stage: int, projection_dispatch_serial: int) -> void:
+	state.context.draw_command_begin_label(_projection_backend_consume_trace_scope_label(debug_raster_stage, projection_dispatch_serial) + "|empty_compute_boundary")
+	_projection_backend_consume_trace_mark(
+		state,
+		point_count,
+		debug_raster_stage,
+		projection_dispatch_serial,
+		ProjectionBackendConsumeTraceMode.EMPTY_COMPUTE_BOUNDARY,
+		"first_command_graph_boundary_before_empty_compute_list"
+	)
+	state.context.compute_list_begin()
+	state.context.draw_command_insert_label(_projection_backend_consume_trace_marker_label(debug_raster_stage, projection_dispatch_serial, "empty_compute_list_opened"))
+	state.context.capture_timestamp(_projection_backend_consume_trace_marker_label(debug_raster_stage, projection_dispatch_serial, "empty_compute_list_opened"))
+	state.context.compute_list_end()
+	_projection_backend_consume_trace_mark(
+		state,
+		point_count,
+		debug_raster_stage,
+		projection_dispatch_serial,
+		ProjectionBackendConsumeTraceMode.EMPTY_COMPUTE_BOUNDARY,
+		"first_command_graph_boundary_after_empty_compute_list"
+	)
+	state.context.draw_command_end_label()
+
+func _projection_backend_consume_trace_scope_label(debug_raster_stage: int, projection_dispatch_serial: int) -> String:
+	return "gdgs_projection_backend_trace serial=%d raster_stage=%s shader_mode=%s" % [
+		projection_dispatch_serial,
+		_raster_stage_name(debug_raster_stage),
+		_projection_shader_mode_name(_projection_shader_mode_for_stage(debug_raster_stage))
+	]
+
+func _projection_backend_consume_trace_marker_label(debug_raster_stage: int, projection_dispatch_serial: int, boundary_name: String) -> String:
+	return "gdgs_projection_boundary serial=%d raster_stage=%s shader_mode=%s boundary=%s" % [
+		projection_dispatch_serial,
+		_raster_stage_name(debug_raster_stage),
+		_projection_shader_mode_name(_projection_shader_mode_for_stage(debug_raster_stage)),
+		boundary_name
+	]
 
 func _assert_projection_preconditions(state, point_count: int) -> void:
 	assert(state.texture_size.x > 0 and state.texture_size.y > 0, "Projection output size must stay positive")
@@ -841,6 +929,17 @@ func _projection_readback_checkpoint_name(value: int) -> String:
 			return "culled_splats_sentinel_only"
 		ProjectionReadbackCheckpoint.SCRATCH_PROJECTION_MIRROR_ONLY:
 			return "scratch_projection_mirror_only"
+		_:
+			return "unknown(%d)" % value
+
+func _projection_backend_consume_trace_mode_name(value: int) -> String:
+	match value:
+		ProjectionBackendConsumeTraceMode.DISABLED:
+			return "disabled"
+		ProjectionBackendConsumeTraceMode.MARKERS_ONLY:
+			return "markers_only"
+		ProjectionBackendConsumeTraceMode.EMPTY_COMPUTE_BOUNDARY:
+			return "empty_compute_boundary"
 		_:
 			return "unknown(%d)" % value
 

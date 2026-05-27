@@ -48,6 +48,7 @@ enum CompositorDebugStage {
 @export_enum("Full Pipeline", "Callback Only", "Raster Only (No Writeback)") var debug_compositor_stage: int = CompositorDebugStage.FULL_PIPELINE
 @export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Projection Footprint Only", "Projection Non-Footprint Immediate Return Only", "Projection Post-Barrier No-Scratch Immediate Return Only", "Projection Post-Barrier Immediate Return Only", "Projection Instance-Data Block Only", "Projection Instance Data Only", "Projection Model Matrix Only", "Projection Splat Payload Only", "Projection Dummy Output Write Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
 @export_enum("Full Package", "Disabled / No Readback", "Histogram Header Only", "Projection Probe Only", "Sort Keys Sentinel Only", "Sort Values Sentinel Only", "Culled Splats Sentinel Only", "Scratch Projection Mirror Only") var debug_projection_readback_checkpoint: int = 0
+@export_enum("Disabled", "Markers Only", "Empty Compute Boundary") var debug_backend_consume_trace_mode: int = 0
 
 var rd: RenderingDevice
 var shader: RID
@@ -190,7 +191,8 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			camera_data["world_position"],
 			_get_depth_capture_alpha(),
 			debug_raster_stage,
-			debug_projection_readback_checkpoint
+			debug_projection_readback_checkpoint,
+			debug_backend_consume_trace_mode
 		)
 		print("[gdgs] compositor stage=render_for_compositor_returned view=%d empty=%s" % [view, str(gsplat_result.is_empty())])
 		var debug_sync_snapshot: Dictionary = gsplat_result.get("debug_sync_snapshot", {})

@@ -49,6 +49,18 @@ func compute_list_begin() -> int:
 func compute_list_end() -> void:
 	device.compute_list_end()
 
+func draw_command_begin_label(label_name: String, color: Color = Color(1, 1, 1, 1)) -> void:
+	device.draw_command_begin_label(label_name, color)
+
+func draw_command_end_label() -> void:
+	device.draw_command_end_label()
+
+func draw_command_insert_label(label_name: String, color: Color = Color(1, 1, 1, 1)) -> void:
+	device.draw_command_insert_label(label_name, color)
+
+func capture_timestamp(name: String) -> void:
+	device.capture_timestamp(name)
+
 func load_shader(path: String) -> RID:
 	if not shader_cache.has(path):
 		var shader_file: RDShaderFile = load(path)

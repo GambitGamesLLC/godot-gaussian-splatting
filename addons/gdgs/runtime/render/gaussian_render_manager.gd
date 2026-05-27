@@ -48,7 +48,8 @@ func render_for_compositor(
 	camera_world_position: Vector3,
 	depth_capture_alpha: float = 0.5,
 	debug_raster_stage: int = GaussianRenderer.RasterDebugStage.FULL_PIPELINE,
-	debug_projection_readback_checkpoint: int = GaussianRenderer.ProjectionReadbackCheckpoint.FULL_PACKAGE
+	debug_projection_readback_checkpoint: int = GaussianRenderer.ProjectionReadbackCheckpoint.FULL_PACKAGE,
+	debug_backend_consume_trace_mode: int = GaussianRenderer.ProjectionBackendConsumeTraceMode.DISABLED
 ) -> Dictionary:
 	return _renderer.render_for_compositor(
 		_gpu_state_cache,
@@ -59,7 +60,8 @@ func render_for_compositor(
 		camera_world_position,
 		depth_capture_alpha,
 		debug_raster_stage,
-		debug_projection_readback_checkpoint
+		debug_projection_readback_checkpoint,
+		debug_backend_consume_trace_mode
 	)
 
 func _cleanup_on_render_thread() -> void:
