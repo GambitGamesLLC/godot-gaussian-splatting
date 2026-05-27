@@ -53,6 +53,7 @@ const SCRATCH_PROJECTION_STAGE_DUMMY_OUTPUT_WRITE := 1 << 9
 const SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_BLOCK_ENTERED := 1 << 10
 const SCRATCH_PROJECTION_STAGE_NON_FOOTPRINT_IMMEDIATE_RETURN := 1 << 11
 const SCRATCH_PROJECTION_STAGE_POST_BARRIER_IMMEDIATE_RETURN := 1 << 12
+const SCRATCH_PROJECTION_STAGE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN := 1 << 13
 
 const PROJECTION_ERROR_FLAG_NON_FINITE := 1 << 0
 const PROJECTION_ERROR_FLAG_SORT_OVERFLOW := 1 << 1
@@ -80,6 +81,7 @@ enum RasterDebugStage {
 	PROJECTION_ONLY,
 	PROJECTION_FOOTPRINT_ONLY,
 	PROJECTION_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY,
+	PROJECTION_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY,
 	PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY,
 	PROJECTION_INSTANCE_DATA_BLOCK_ONLY,
 	PROJECTION_INSTANCE_DATA_ONLY,
@@ -95,12 +97,13 @@ enum RasterDebugStage {
 const PROJECTION_SHADER_MODE_NORMAL := 0
 const PROJECTION_SHADER_MODE_FOOTPRINT_ONLY := 1
 const PROJECTION_SHADER_MODE_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY := 2
-const PROJECTION_SHADER_MODE_POST_BARRIER_IMMEDIATE_RETURN_ONLY := 3
-const PROJECTION_SHADER_MODE_INSTANCE_DATA_BLOCK_ONLY := 4
-const PROJECTION_SHADER_MODE_INSTANCE_DATA_ONLY := 5
-const PROJECTION_SHADER_MODE_MODEL_MATRIX_ONLY := 6
-const PROJECTION_SHADER_MODE_SPLAT_PAYLOAD_ONLY := 7
-const PROJECTION_SHADER_MODE_DUMMY_OUTPUT_WRITE_ONLY := 8
+const PROJECTION_SHADER_MODE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY := 3
+const PROJECTION_SHADER_MODE_POST_BARRIER_IMMEDIATE_RETURN_ONLY := 4
+const PROJECTION_SHADER_MODE_INSTANCE_DATA_BLOCK_ONLY := 5
+const PROJECTION_SHADER_MODE_INSTANCE_DATA_ONLY := 6
+const PROJECTION_SHADER_MODE_MODEL_MATRIX_ONLY := 7
+const PROJECTION_SHADER_MODE_SPLAT_PAYLOAD_ONLY := 8
+const PROJECTION_SHADER_MODE_DUMMY_OUTPUT_WRITE_ONLY := 9
 
 enum ProjectionReadbackCheckpoint {
 	FULL_PACKAGE,
@@ -282,6 +285,10 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY:
 		_log_stage("projection_non_footprint_immediate_return_only_gate", state, point_count)
+		return
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY:
+		_log_stage("projection_post_barrier_no_scratch_immediate_return_only_gate", state, point_count)
 		return
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
@@ -726,6 +733,7 @@ func _scratch_probe_log_fields(scratch_data: PackedByteArray) -> Dictionary:
 		"scratch_projection_sort_written": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SORT_WRITTEN) != 0),
 		"scratch_projection_footprint_returned": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN) != 0),
 		"scratch_projection_non_footprint_immediate_return": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_NON_FOOTPRINT_IMMEDIATE_RETURN) != 0),
+		"scratch_projection_post_barrier_no_scratch_immediate_return": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN) != 0),
 		"scratch_projection_post_barrier_immediate_return": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_POST_BARRIER_IMMEDIATE_RETURN) != 0),
 		"scratch_projection_instance_data_block_entered": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_BLOCK_ENTERED) != 0),
 		"scratch_projection_instance_data_read": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_READ) != 0),
@@ -790,6 +798,8 @@ func _raster_stage_name(value: int) -> String:
 			return "projection_footprint_only"
 		RasterDebugStage.PROJECTION_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY:
 			return "projection_non_footprint_immediate_return_only"
+		RasterDebugStage.PROJECTION_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY:
+			return "projection_post_barrier_no_scratch_immediate_return_only"
 		RasterDebugStage.PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 			return "projection_post_barrier_immediate_return_only"
 		RasterDebugStage.PROJECTION_INSTANCE_DATA_BLOCK_ONLY:
@@ -840,6 +850,8 @@ func _projection_shader_mode_for_stage(debug_raster_stage: int) -> int:
 			return PROJECTION_SHADER_MODE_FOOTPRINT_ONLY
 		RasterDebugStage.PROJECTION_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY:
 			return PROJECTION_SHADER_MODE_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY
+		RasterDebugStage.PROJECTION_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY:
+			return PROJECTION_SHADER_MODE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY
 		RasterDebugStage.PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 			return PROJECTION_SHADER_MODE_POST_BARRIER_IMMEDIATE_RETURN_ONLY
 		RasterDebugStage.PROJECTION_INSTANCE_DATA_BLOCK_ONLY:
@@ -863,6 +875,8 @@ func _projection_shader_mode_name(value: int) -> String:
 			return "footprint_only"
 		PROJECTION_SHADER_MODE_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY:
 			return "non_footprint_immediate_return_only"
+		PROJECTION_SHADER_MODE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY:
+			return "post_barrier_no_scratch_immediate_return_only"
 		PROJECTION_SHADER_MODE_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 			return "post_barrier_immediate_return_only"
 		PROJECTION_SHADER_MODE_INSTANCE_DATA_BLOCK_ONLY:
