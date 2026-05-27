@@ -46,7 +46,7 @@ enum CompositorDebugStage {
 @export_enum("Composite", "GS Alpha", "GS Color", "GS Depth", "Scene Depth", "Depth Reject Mask") var debug_view: int = DebugView.COMPOSITE
 @export var ignore_scene_depth_in_composite := false
 @export_enum("Full Pipeline", "Callback Only", "Raster Only (No Writeback)") var debug_compositor_stage: int = CompositorDebugStage.FULL_PIPELINE
-@export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Projection Footprint Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
+@export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Projection Footprint Only", "Projection Instance Data Only", "Projection Model Matrix Only", "Projection Splat Payload Only", "Projection Dummy Output Write Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
 @export_enum("Full Package", "Disabled / No Readback", "Histogram Header Only", "Projection Probe Only", "Sort Keys Sentinel Only", "Sort Values Sentinel Only", "Culled Splats Sentinel Only", "Scratch Projection Mirror Only") var debug_projection_readback_checkpoint: int = 0
 
 var rd: RenderingDevice
@@ -411,6 +411,14 @@ func _raster_stage_name(value: int) -> String:
 			return "projection_only"
 		GaussianRenderer.RasterDebugStage.PROJECTION_FOOTPRINT_ONLY:
 			return "projection_footprint_only"
+		GaussianRenderer.RasterDebugStage.PROJECTION_INSTANCE_DATA_ONLY:
+			return "projection_instance_data_only"
+		GaussianRenderer.RasterDebugStage.PROJECTION_MODEL_MATRIX_ONLY:
+			return "projection_model_matrix_only"
+		GaussianRenderer.RasterDebugStage.PROJECTION_SPLAT_PAYLOAD_ONLY:
+			return "projection_splat_payload_only"
+		GaussianRenderer.RasterDebugStage.PROJECTION_DUMMY_OUTPUT_WRITE_ONLY:
+			return "projection_dummy_output_write_only"
 		GaussianRenderer.RasterDebugStage.RADIX_ONLY:
 			return "radix_only"
 		GaussianRenderer.RasterDebugStage.BOUNDARIES_ONLY:

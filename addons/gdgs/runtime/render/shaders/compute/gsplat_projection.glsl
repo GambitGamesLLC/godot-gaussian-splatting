@@ -138,9 +138,17 @@ const uint SCRATCH_PROJECTION_STAGE_CULLED_WRITE = 1u << 2;
 const uint SCRATCH_PROJECTION_STAGE_SORT_RESERVED = 1u << 3;
 const uint SCRATCH_PROJECTION_STAGE_SORT_WRITTEN = 1u << 4;
 const uint SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN = 1u << 5;
+const uint SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_READ = 1u << 6;
+const uint SCRATCH_PROJECTION_STAGE_MODEL_MATRIX_READ = 1u << 7;
+const uint SCRATCH_PROJECTION_STAGE_SPLAT_PAYLOAD_READ = 1u << 8;
+const uint SCRATCH_PROJECTION_STAGE_DUMMY_OUTPUT_WRITE = 1u << 9;
 
 const int PROJECTION_MODE_NORMAL = 0;
 const int PROJECTION_MODE_FOOTPRINT_ONLY = 1;
+const int PROJECTION_MODE_INSTANCE_DATA_ONLY = 2;
+const int PROJECTION_MODE_MODEL_MATRIX_ONLY = 3;
+const int PROJECTION_MODE_SPLAT_PAYLOAD_ONLY = 4;
+const int PROJECTION_MODE_DUMMY_OUTPUT_WRITE_ONLY = 5;
 
 const uint PROJECTION_ERROR_FLAG_NON_FINITE = 1u << 0;
 const uint PROJECTION_ERROR_FLAG_SORT_OVERFLOW = 1u << 1;
@@ -292,11 +300,37 @@ void main() {
 
 	barrier();
 	uvec2 instance_data = splat_instance_data[id];
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_READ);
+	if (debug_projection_mode == PROJECTION_MODE_INSTANCE_DATA_ONLY) {
+		return;
+	}
 	uint instance_id = instance_data.x;
 	uint unique_splat_index = instance_data.y;
 
-	const Splat splat = splat_buffer[unique_splat_index];
 	mat4 model_matrix = instance_model_matrices[instance_id];
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_MODEL_MATRIX_READ);
+	if (debug_projection_mode == PROJECTION_MODE_MODEL_MATRIX_ONLY) {
+		return;
+	}
+
+	const Splat splat = splat_buffer[unique_splat_index];
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_SPLAT_PAYLOAD_READ);
+	if (debug_projection_mode == PROJECTION_MODE_SPLAT_PAYLOAD_ONLY) {
+		return;
+	}
+
+	if (debug_projection_mode == PROJECTION_MODE_DUMMY_OUTPUT_WRITE_ONLY) {
+		RasterizeData dummy_data;
+		dummy_data.image_pos = vec2(0.0);
+		dummy_data.pos_xy = vec2(0.0);
+		dummy_data.conic = vec3(0.0);
+		dummy_data.pos_z = 0.0;
+		dummy_data.color = vec4(0.0);
+		dummy_data.depth_data = vec4(0.0);
+		culled_buffer[id] = dummy_data;
+		atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_DUMMY_OUTPUT_WRITE | SCRATCH_PROJECTION_STAGE_CULLED_WRITE);
+		return;
+	}
 
 	// --- VISIBILITY ---
 	float is_visible = model_matrix[0][3];

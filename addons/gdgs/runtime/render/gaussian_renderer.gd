@@ -46,6 +46,10 @@ const SCRATCH_PROJECTION_STAGE_CULLED_WRITE := 1 << 2
 const SCRATCH_PROJECTION_STAGE_SORT_RESERVED := 1 << 3
 const SCRATCH_PROJECTION_STAGE_SORT_WRITTEN := 1 << 4
 const SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN := 1 << 5
+const SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_READ := 1 << 6
+const SCRATCH_PROJECTION_STAGE_MODEL_MATRIX_READ := 1 << 7
+const SCRATCH_PROJECTION_STAGE_SPLAT_PAYLOAD_READ := 1 << 8
+const SCRATCH_PROJECTION_STAGE_DUMMY_OUTPUT_WRITE := 1 << 9
 
 const PROJECTION_ERROR_FLAG_NON_FINITE := 1 << 0
 const PROJECTION_ERROR_FLAG_SORT_OVERFLOW := 1 << 1
@@ -72,6 +76,10 @@ enum RasterDebugStage {
 	PREPARED_NO_DISPATCH,
 	PROJECTION_ONLY,
 	PROJECTION_FOOTPRINT_ONLY,
+	PROJECTION_INSTANCE_DATA_ONLY,
+	PROJECTION_MODEL_MATRIX_ONLY,
+	PROJECTION_SPLAT_PAYLOAD_ONLY,
+	PROJECTION_DUMMY_OUTPUT_WRITE_ONLY,
 	RADIX_ONLY,
 	BOUNDARIES_ONLY,
 	RENDER_ONLY,
@@ -80,6 +88,10 @@ enum RasterDebugStage {
 
 const PROJECTION_SHADER_MODE_NORMAL := 0
 const PROJECTION_SHADER_MODE_FOOTPRINT_ONLY := 1
+const PROJECTION_SHADER_MODE_INSTANCE_DATA_ONLY := 2
+const PROJECTION_SHADER_MODE_MODEL_MATRIX_ONLY := 3
+const PROJECTION_SHADER_MODE_SPLAT_PAYLOAD_ONLY := 4
+const PROJECTION_SHADER_MODE_DUMMY_OUTPUT_WRITE_ONLY := 5
 
 enum ProjectionReadbackCheckpoint {
 	FULL_PACKAGE,
@@ -181,7 +193,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 
 	_assert_projection_preconditions(state, point_count)
 
-	var projection_shader_mode := PROJECTION_SHADER_MODE_FOOTPRINT_ONLY if debug_raster_stage == RasterDebugStage.PROJECTION_FOOTPRINT_ONLY else PROJECTION_SHADER_MODE_NORMAL
+	var projection_shader_mode := _projection_shader_mode_for_stage(debug_raster_stage)
 	var uniforms := RenderingDeviceContext.create_push_constant([
 		state.camera_world_position.x,
 		state.camera_world_position.y,
@@ -257,6 +269,22 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_FOOTPRINT_ONLY:
 		_log_stage("projection_footprint_only_gate", state, point_count)
+		return
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_INSTANCE_DATA_ONLY:
+		_log_stage("projection_instance_data_only_gate", state, point_count)
+		return
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_MODEL_MATRIX_ONLY:
+		_log_stage("projection_model_matrix_only_gate", state, point_count)
+		return
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_SPLAT_PAYLOAD_ONLY:
+		_log_stage("projection_splat_payload_only_gate", state, point_count)
+		return
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_DUMMY_OUTPUT_WRITE_ONLY:
+		_log_stage("projection_dummy_output_write_only_gate", state, point_count)
 		return
 
 	compute_list = state.context.compute_list_begin()
@@ -676,6 +704,10 @@ func _scratch_probe_log_fields(scratch_data: PackedByteArray) -> Dictionary:
 		"scratch_projection_sort_reserved": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SORT_RESERVED) != 0),
 		"scratch_projection_sort_written": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SORT_WRITTEN) != 0),
 		"scratch_projection_footprint_returned": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN) != 0),
+		"scratch_projection_instance_data_read": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_READ) != 0),
+		"scratch_projection_model_matrix_read": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_MODEL_MATRIX_READ) != 0),
+		"scratch_projection_splat_payload_read": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SPLAT_PAYLOAD_READ) != 0),
+		"scratch_projection_dummy_output_write": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_DUMMY_OUTPUT_WRITE) != 0),
 		"scratch_projection_max_requested_sort_end": _probe_word(scratch_words, SCRATCH_PROBE_PROJECTION_MAX_REQUESTED_SORT_END, 0)
 	}
 
@@ -732,6 +764,14 @@ func _raster_stage_name(value: int) -> String:
 			return "projection_only"
 		RasterDebugStage.PROJECTION_FOOTPRINT_ONLY:
 			return "projection_footprint_only"
+		RasterDebugStage.PROJECTION_INSTANCE_DATA_ONLY:
+			return "projection_instance_data_only"
+		RasterDebugStage.PROJECTION_MODEL_MATRIX_ONLY:
+			return "projection_model_matrix_only"
+		RasterDebugStage.PROJECTION_SPLAT_PAYLOAD_ONLY:
+			return "projection_splat_payload_only"
+		RasterDebugStage.PROJECTION_DUMMY_OUTPUT_WRITE_ONLY:
+			return "projection_dummy_output_write_only"
 		RasterDebugStage.RADIX_ONLY:
 			return "radix_only"
 		RasterDebugStage.BOUNDARIES_ONLY:
@@ -765,7 +805,19 @@ func _projection_readback_checkpoint_name(value: int) -> String:
 			return "unknown(%d)" % value
 
 func _projection_shader_mode_for_stage(debug_raster_stage: int) -> int:
-	return PROJECTION_SHADER_MODE_FOOTPRINT_ONLY if debug_raster_stage == RasterDebugStage.PROJECTION_FOOTPRINT_ONLY else PROJECTION_SHADER_MODE_NORMAL
+	match debug_raster_stage:
+		RasterDebugStage.PROJECTION_FOOTPRINT_ONLY:
+			return PROJECTION_SHADER_MODE_FOOTPRINT_ONLY
+		RasterDebugStage.PROJECTION_INSTANCE_DATA_ONLY:
+			return PROJECTION_SHADER_MODE_INSTANCE_DATA_ONLY
+		RasterDebugStage.PROJECTION_MODEL_MATRIX_ONLY:
+			return PROJECTION_SHADER_MODE_MODEL_MATRIX_ONLY
+		RasterDebugStage.PROJECTION_SPLAT_PAYLOAD_ONLY:
+			return PROJECTION_SHADER_MODE_SPLAT_PAYLOAD_ONLY
+		RasterDebugStage.PROJECTION_DUMMY_OUTPUT_WRITE_ONLY:
+			return PROJECTION_SHADER_MODE_DUMMY_OUTPUT_WRITE_ONLY
+		_:
+			return PROJECTION_SHADER_MODE_NORMAL
 
 func _projection_shader_mode_name(value: int) -> String:
 	match value:
@@ -773,6 +825,14 @@ func _projection_shader_mode_name(value: int) -> String:
 			return "normal"
 		PROJECTION_SHADER_MODE_FOOTPRINT_ONLY:
 			return "footprint_only"
+		PROJECTION_SHADER_MODE_INSTANCE_DATA_ONLY:
+			return "instance_data_only"
+		PROJECTION_SHADER_MODE_MODEL_MATRIX_ONLY:
+			return "model_matrix_only"
+		PROJECTION_SHADER_MODE_SPLAT_PAYLOAD_ONLY:
+			return "splat_payload_only"
+		PROJECTION_SHADER_MODE_DUMMY_OUTPUT_WRITE_ONLY:
+			return "dummy_output_write_only"
 		_:
 			return "unknown(%d)" % value
 
