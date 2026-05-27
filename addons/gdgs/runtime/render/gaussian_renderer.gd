@@ -45,6 +45,7 @@ const SCRATCH_PROJECTION_STAGE_VISIBLE := 1 << 1
 const SCRATCH_PROJECTION_STAGE_CULLED_WRITE := 1 << 2
 const SCRATCH_PROJECTION_STAGE_SORT_RESERVED := 1 << 3
 const SCRATCH_PROJECTION_STAGE_SORT_WRITTEN := 1 << 4
+const SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN := 1 << 5
 
 const PROJECTION_ERROR_FLAG_NON_FINITE := 1 << 0
 const PROJECTION_ERROR_FLAG_SORT_OVERFLOW := 1 << 1
@@ -70,11 +71,15 @@ enum RasterDebugStage {
 	FULL_PIPELINE,
 	PREPARED_NO_DISPATCH,
 	PROJECTION_ONLY,
+	PROJECTION_FOOTPRINT_ONLY,
 	RADIX_ONLY,
 	BOUNDARIES_ONLY,
 	RENDER_ONLY,
 	SCRATCH_ONLY
 }
+
+const PROJECTION_SHADER_MODE_NORMAL := 0
+const PROJECTION_SHADER_MODE_FOOTPRINT_ONLY := 1
 
 enum ProjectionReadbackCheckpoint {
 	FULL_PACKAGE,
@@ -176,6 +181,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 
 	_assert_projection_preconditions(state, point_count)
 
+	var projection_shader_mode := PROJECTION_SHADER_MODE_FOOTPRINT_ONLY if debug_raster_stage == RasterDebugStage.PROJECTION_FOOTPRINT_ONLY else PROJECTION_SHADER_MODE_NORMAL
 	var uniforms := RenderingDeviceContext.create_push_constant([
 		state.camera_world_position.x,
 		state.camera_world_position.y,
@@ -184,7 +190,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 		state.texture_size.x,
 		state.texture_size.y,
 		point_count,
-		0
+		projection_shader_mode
 	])
 	state.context.device.buffer_update(state.descriptors["uniforms"].rid, 0, 8 * 4, uniforms)
 	state.context.device.buffer_clear(state.descriptors["histogram"].rid, 0, 4 + 4 * RADIX * 4)
@@ -197,6 +203,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 	_log_stage("prepared", state, point_count, {
 		"raster_stage_gate": _raster_stage_name(debug_raster_stage),
 		"projection_readback_checkpoint": _projection_readback_checkpoint_name(debug_projection_readback_checkpoint),
+		"projection_shader_mode": _projection_shader_mode_name(projection_shader_mode),
 		"projection_push_constant_bytes": state.camera_push_constants.size(),
 		"projection_push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
 		"projection_group_count": state.diagnostics.get("projection_group_count", -1),
@@ -227,7 +234,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 	state.last_projection_dispatch_serial += 1
 	var projection_dispatch_serial := int(state.last_projection_dispatch_serial)
 	var compute_list: int = state.context.compute_list_begin()
-	var projection_details := _projection_diagnostic_details(state, point_count)
+	var projection_details := _projection_diagnostic_details(state, point_count, debug_raster_stage)
 	projection_details["projection_dispatch_serial"] = projection_dispatch_serial
 	_log_stage("projection_begin", state, point_count, projection_details)
 	state.pipelines["gsplat_projection"].call(state.context, compute_list, state.camera_push_constants)
@@ -246,6 +253,10 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_ONLY:
 		_log_stage("projection_only_gate", state, point_count)
+		return
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_FOOTPRINT_ONLY:
+		_log_stage("projection_footprint_only_gate", state, point_count)
 		return
 
 	compute_list = state.context.compute_list_begin()
@@ -352,7 +363,7 @@ func _assert_boundary_preconditions(state, point_count: int) -> void:
 	assert(int(state.diagnostics.get("tile_bounds_capacity", 0)) == state.tile_dims.x * state.tile_dims.y, "Tile bounds capacity must match tile grid")
 	assert(int(state.diagnostics.get("num_sort_elements_max", 0)) == point_count * MAX_SORT_ELEMENTS_PER_SPLAT, "Sort capacity drifted from point-count bounds assumption")
 
-func _projection_diagnostic_details(state, point_count: int) -> Dictionary:
+func _projection_diagnostic_details(state, point_count: int, debug_raster_stage: int) -> Dictionary:
 	return {
 		"push_constant_bytes": state.camera_push_constants.size(),
 		"push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
@@ -367,7 +378,8 @@ func _projection_diagnostic_details(state, point_count: int) -> Dictionary:
 		"gpu_generation": int(state.gpu_generation),
 		"cleanup_request_serial": int(state.last_cleanup_request_serial),
 		"cleanup_request_reason": state.last_cleanup_reason,
-		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state))
+		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state)),
+		"projection_shader_mode": _projection_shader_mode_name(_projection_shader_mode_for_stage(debug_raster_stage))
 	}
 
 func _post_projection_sync_snapshot(state) -> Dictionary:
@@ -663,6 +675,7 @@ func _scratch_probe_log_fields(scratch_data: PackedByteArray) -> Dictionary:
 		"scratch_projection_culled_write": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_CULLED_WRITE) != 0),
 		"scratch_projection_sort_reserved": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SORT_RESERVED) != 0),
 		"scratch_projection_sort_written": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SORT_WRITTEN) != 0),
+		"scratch_projection_footprint_returned": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN) != 0),
 		"scratch_projection_max_requested_sort_end": _probe_word(scratch_words, SCRATCH_PROBE_PROJECTION_MAX_REQUESTED_SORT_END, 0)
 	}
 
@@ -717,6 +730,8 @@ func _raster_stage_name(value: int) -> String:
 			return "prepared_no_dispatch"
 		RasterDebugStage.PROJECTION_ONLY:
 			return "projection_only"
+		RasterDebugStage.PROJECTION_FOOTPRINT_ONLY:
+			return "projection_footprint_only"
 		RasterDebugStage.RADIX_ONLY:
 			return "radix_only"
 		RasterDebugStage.BOUNDARIES_ONLY:
@@ -746,6 +761,18 @@ func _projection_readback_checkpoint_name(value: int) -> String:
 			return "culled_splats_sentinel_only"
 		ProjectionReadbackCheckpoint.SCRATCH_PROJECTION_MIRROR_ONLY:
 			return "scratch_projection_mirror_only"
+		_:
+			return "unknown(%d)" % value
+
+func _projection_shader_mode_for_stage(debug_raster_stage: int) -> int:
+	return PROJECTION_SHADER_MODE_FOOTPRINT_ONLY if debug_raster_stage == RasterDebugStage.PROJECTION_FOOTPRINT_ONLY else PROJECTION_SHADER_MODE_NORMAL
+
+func _projection_shader_mode_name(value: int) -> String:
+	match value:
+		PROJECTION_SHADER_MODE_NORMAL:
+			return "normal"
+		PROJECTION_SHADER_MODE_FOOTPRINT_ONLY:
+			return "footprint_only"
 		_:
 			return "unknown(%d)" % value
 

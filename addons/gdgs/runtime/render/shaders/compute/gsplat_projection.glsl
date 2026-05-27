@@ -86,7 +86,7 @@ layout (std140, set = 0, binding = 8) restrict uniform Uniforms {
 	float time;
 	ivec2 dims; // Texture size
 	int point_count;
-	int _uniform_pad0;
+	int debug_projection_mode;
 };
 
 layout(std430, set = 0, binding = 9) restrict buffer ProjectionProbe {
@@ -137,6 +137,10 @@ const uint SCRATCH_PROJECTION_STAGE_VISIBLE = 1u << 1;
 const uint SCRATCH_PROJECTION_STAGE_CULLED_WRITE = 1u << 2;
 const uint SCRATCH_PROJECTION_STAGE_SORT_RESERVED = 1u << 3;
 const uint SCRATCH_PROJECTION_STAGE_SORT_WRITTEN = 1u << 4;
+const uint SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN = 1u << 5;
+
+const int PROJECTION_MODE_NORMAL = 0;
+const int PROJECTION_MODE_FOOTPRINT_ONLY = 1;
 
 const uint PROJECTION_ERROR_FLAG_NON_FINITE = 1u << 0;
 const uint PROJECTION_ERROR_FLAG_SORT_OVERFLOW = 1u << 1;
@@ -281,6 +285,10 @@ void main() {
 	atomicAdd(projection_probe[PROJECTION_PROBE_INVOCATIONS], 1u);
 	atomicAdd(scratch_probe[SCRATCH_PROBE_PROJECTION_INVOCATIONS], 1u);
 	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_ENTRY);
+	if (debug_projection_mode == PROJECTION_MODE_FOOTPRINT_ONLY) {
+		atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_FOOTPRINT_RETURN);
+		return;
+	}
 
 	barrier();
 	uvec2 instance_data = splat_instance_data[id];
