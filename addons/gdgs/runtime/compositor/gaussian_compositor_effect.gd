@@ -46,7 +46,7 @@ enum CompositorDebugStage {
 @export_enum("Composite", "GS Alpha", "GS Color", "GS Depth", "Scene Depth", "Depth Reject Mask") var debug_view: int = DebugView.COMPOSITE
 @export var ignore_scene_depth_in_composite := false
 @export_enum("Full Pipeline", "Callback Only", "Raster Only (No Writeback)") var debug_compositor_stage: int = CompositorDebugStage.FULL_PIPELINE
-@export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Projection Footprint Only", "Projection Non-Footprint Immediate Return Only", "Projection Post-Barrier No-Scratch Immediate Return Only", "Projection Post-Barrier Immediate Return Only", "Projection Instance-Data Block Only", "Projection Instance Data Only", "Projection Model Matrix Only", "Projection Splat Payload Only", "Projection Dummy Output Write Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
+@export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Projection Footprint Only", "Projection Non-Footprint Immediate Return Only", "Projection Post-Barrier No-Scratch Immediate Return Only", "Projection Post-Barrier Immediate Return Only", "Projection Instance-Data Block Only", "Projection Pre-Instance Read Probe Only", "Projection Instance-Data Touch Only", "Projection Instance Data Only", "Projection Model Matrix Only", "Projection Splat Payload Only", "Projection Dummy Output Write Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
 @export_enum("Full Package", "Disabled / No Readback", "Histogram Header Only", "Projection Probe Only", "Sort Keys Sentinel Only", "Sort Values Sentinel Only", "Culled Splats Sentinel Only", "Scratch Projection Mirror Only") var debug_projection_readback_checkpoint: int = 0
 @export_enum("Disabled", "Markers Only", "Empty Compute Boundary") var debug_backend_consume_trace_mode: int = 0
 
@@ -421,6 +421,10 @@ func _raster_stage_name(value: int) -> String:
 			return "projection_post_barrier_immediate_return_only"
 		GaussianRenderer.RasterDebugStage.PROJECTION_INSTANCE_DATA_BLOCK_ONLY:
 			return "projection_instance_data_block_only"
+		GaussianRenderer.RasterDebugStage.PROJECTION_PRE_INSTANCE_READ_PROBE_ONLY:
+			return "projection_pre_instance_read_probe_only"
+		GaussianRenderer.RasterDebugStage.PROJECTION_INSTANCE_DATA_TOUCH_ONLY:
+			return "projection_instance_data_touch_only"
 		GaussianRenderer.RasterDebugStage.PROJECTION_INSTANCE_DATA_ONLY:
 			return "projection_instance_data_only"
 		GaussianRenderer.RasterDebugStage.PROJECTION_MODEL_MATRIX_ONLY:
