@@ -419,6 +419,8 @@ func _raster_stage_name(value: int) -> String:
 			return "projection_post_barrier_no_scratch_immediate_return_only"
 		GaussianRenderer.RasterDebugStage.PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 			return "projection_post_barrier_immediate_return_only"
+		GaussianRenderer.RasterDebugStage.PROJECTION_PRE_BLOCK_ENTER_PROBE_ONLY:
+			return "projection_pre_block_enter_probe_only"
 		GaussianRenderer.RasterDebugStage.PROJECTION_INSTANCE_DATA_BLOCK_ONLY:
 			return "projection_instance_data_block_only"
 		GaussianRenderer.RasterDebugStage.PROJECTION_PRE_INSTANCE_READ_PROBE_ONLY:

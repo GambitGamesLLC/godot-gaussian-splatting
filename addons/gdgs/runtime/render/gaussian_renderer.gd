@@ -56,6 +56,7 @@ const SCRATCH_PROJECTION_STAGE_POST_BARRIER_IMMEDIATE_RETURN := 1 << 12
 const SCRATCH_PROJECTION_STAGE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN := 1 << 13
 const SCRATCH_PROJECTION_STAGE_PRE_INSTANCE_READ_PROBE := 1 << 14
 const SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_TOUCH := 1 << 15
+const SCRATCH_PROJECTION_STAGE_PRE_BLOCK_ENTER_PROBE := 1 << 16
 
 const PROJECTION_ERROR_FLAG_NON_FINITE := 1 << 0
 const PROJECTION_ERROR_FLAG_SORT_OVERFLOW := 1 << 1
@@ -85,6 +86,7 @@ enum RasterDebugStage {
 	PROJECTION_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY,
 	PROJECTION_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY,
 	PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY,
+	PROJECTION_PRE_BLOCK_ENTER_PROBE_ONLY,
 	PROJECTION_INSTANCE_DATA_BLOCK_ONLY,
 	PROJECTION_PRE_INSTANCE_READ_PROBE_ONLY,
 	PROJECTION_INSTANCE_DATA_TOUCH_ONLY,
@@ -103,13 +105,14 @@ const PROJECTION_SHADER_MODE_FOOTPRINT_ONLY := 1
 const PROJECTION_SHADER_MODE_NON_FOOTPRINT_IMMEDIATE_RETURN_ONLY := 2
 const PROJECTION_SHADER_MODE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY := 3
 const PROJECTION_SHADER_MODE_POST_BARRIER_IMMEDIATE_RETURN_ONLY := 4
-const PROJECTION_SHADER_MODE_INSTANCE_DATA_BLOCK_ONLY := 5
-const PROJECTION_SHADER_MODE_PRE_INSTANCE_READ_PROBE_ONLY := 6
-const PROJECTION_SHADER_MODE_INSTANCE_DATA_TOUCH_ONLY := 7
-const PROJECTION_SHADER_MODE_INSTANCE_DATA_ONLY := 8
-const PROJECTION_SHADER_MODE_MODEL_MATRIX_ONLY := 9
-const PROJECTION_SHADER_MODE_SPLAT_PAYLOAD_ONLY := 10
-const PROJECTION_SHADER_MODE_DUMMY_OUTPUT_WRITE_ONLY := 11
+const PROJECTION_SHADER_MODE_PRE_BLOCK_ENTER_PROBE_ONLY := 5
+const PROJECTION_SHADER_MODE_INSTANCE_DATA_BLOCK_ONLY := 6
+const PROJECTION_SHADER_MODE_PRE_INSTANCE_READ_PROBE_ONLY := 7
+const PROJECTION_SHADER_MODE_INSTANCE_DATA_TOUCH_ONLY := 8
+const PROJECTION_SHADER_MODE_INSTANCE_DATA_ONLY := 9
+const PROJECTION_SHADER_MODE_MODEL_MATRIX_ONLY := 10
+const PROJECTION_SHADER_MODE_SPLAT_PAYLOAD_ONLY := 11
+const PROJECTION_SHADER_MODE_DUMMY_OUTPUT_WRITE_ONLY := 12
 
 enum ProjectionReadbackCheckpoint {
 	FULL_PACKAGE,
@@ -329,6 +332,10 @@ func _rasterize_state(
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 		_log_stage("projection_post_barrier_immediate_return_only_gate", state, point_count)
+		return
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_PRE_BLOCK_ENTER_PROBE_ONLY:
+		_log_stage("projection_pre_block_enter_probe_only_gate", state, point_count)
 		return
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_INSTANCE_DATA_BLOCK_ONLY:
@@ -829,6 +836,7 @@ func _scratch_probe_log_fields(scratch_data: PackedByteArray) -> Dictionary:
 		"scratch_projection_non_footprint_immediate_return": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_NON_FOOTPRINT_IMMEDIATE_RETURN) != 0),
 		"scratch_projection_post_barrier_no_scratch_immediate_return": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN) != 0),
 		"scratch_projection_post_barrier_immediate_return": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_POST_BARRIER_IMMEDIATE_RETURN) != 0),
+		"scratch_projection_pre_block_enter_probe": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_PRE_BLOCK_ENTER_PROBE) != 0),
 		"scratch_projection_instance_data_block_entered": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_BLOCK_ENTERED) != 0),
 		"scratch_projection_pre_instance_read_probe": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_PRE_INSTANCE_READ_PROBE) != 0),
 		"scratch_projection_instance_data_touch": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_INSTANCE_DATA_TOUCH) != 0),
@@ -898,6 +906,8 @@ func _raster_stage_name(value: int) -> String:
 			return "projection_post_barrier_no_scratch_immediate_return_only"
 		RasterDebugStage.PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 			return "projection_post_barrier_immediate_return_only"
+		RasterDebugStage.PROJECTION_PRE_BLOCK_ENTER_PROBE_ONLY:
+			return "projection_pre_block_enter_probe_only"
 		RasterDebugStage.PROJECTION_INSTANCE_DATA_BLOCK_ONLY:
 			return "projection_instance_data_block_only"
 		RasterDebugStage.PROJECTION_PRE_INSTANCE_READ_PROBE_ONLY:
@@ -965,6 +975,8 @@ func _projection_shader_mode_for_stage(debug_raster_stage: int) -> int:
 			return PROJECTION_SHADER_MODE_POST_BARRIER_NO_SCRATCH_IMMEDIATE_RETURN_ONLY
 		RasterDebugStage.PROJECTION_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 			return PROJECTION_SHADER_MODE_POST_BARRIER_IMMEDIATE_RETURN_ONLY
+		RasterDebugStage.PROJECTION_PRE_BLOCK_ENTER_PROBE_ONLY:
+			return PROJECTION_SHADER_MODE_PRE_BLOCK_ENTER_PROBE_ONLY
 		RasterDebugStage.PROJECTION_INSTANCE_DATA_BLOCK_ONLY:
 			return PROJECTION_SHADER_MODE_INSTANCE_DATA_BLOCK_ONLY
 		RasterDebugStage.PROJECTION_PRE_INSTANCE_READ_PROBE_ONLY:
@@ -994,6 +1006,8 @@ func _projection_shader_mode_name(value: int) -> String:
 			return "post_barrier_no_scratch_immediate_return_only"
 		PROJECTION_SHADER_MODE_POST_BARRIER_IMMEDIATE_RETURN_ONLY:
 			return "post_barrier_immediate_return_only"
+		PROJECTION_SHADER_MODE_PRE_BLOCK_ENTER_PROBE_ONLY:
+			return "pre_block_enter_probe_only"
 		PROJECTION_SHADER_MODE_INSTANCE_DATA_BLOCK_ONLY:
 			return "instance_data_block_only"
 		PROJECTION_SHADER_MODE_PRE_INSTANCE_READ_PROBE_ONLY:
